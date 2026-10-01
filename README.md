@@ -1,57 +1,52 @@
-# AI-powered GitHub repository analyzer & viva assistant
+# AI-powered GitHub Repository Analyzer & Viva Assistant
 
-A working prototype: paste a GitHub repo URL, and it clones the repo, reads
-the structure and key files, and generates a full viva/interview prep
-report — project summary, architecture, folder-by-folder explanations,
-on-demand file/function explanations, viva questions, interview questions,
-learning notes, and code insights.
+A working prototype: paste a GitHub repository URL, and it clones the repository, reads its structure and key files, and generates a full viva/interview preparation report — project summary, architecture, folder explanations, on-demand file/function explanations, viva questions, interview questions, learning notes, code insights, and an HTML report.
 
-## What's real vs. simplified vs. swapped, compared to the original spec
+## Current implementation
 
-- **AI provider**: the spec asks for Google Gemini. This sandbox can only
-  reach `api.anthropic.com`, so the analysis engine calls the **Anthropic
-  API** instead (`app/ai_engine.py`). Every prompt/module is provider-agnostic —
-  swap `_call_ai()` for a Gemini client if you want to switch back.
-- **Database**: SQLite instead of Postgres, to keep the demo to one file
-  with zero setup. Same SQLAlchemy models — change `DATABASE_URL` in `.env`
-  to point at Postgres and nothing else needs to change.
-- **Everything else** (auth, repo cloning/scanning, all 12 modules, the
-  dashboard, the HTML report) is implemented and was tested end-to-end
-  against a real GitHub repo during the build — not stubbed.
-- **Not built**: PDF export (marked optional in the spec) and a background
-  job queue — analysis runs synchronously in the request, which is fine
-  for a demo repo but will feel slow on a large one.
+- **AI provider:** Google Gemini via the `google-genai` SDK.
+- **Database:** SQLite by default for local development; PostgreSQL is supported for production through the same `DATABASE_URL` setting.
+- **Authentication:** JWT-based authentication.
+- **Backend:** FastAPI + SQLAlchemy.
+- **Frontend:** React + Vite + Tailwind CSS + React Router + Axios.
+- **Repository analysis:** GitPython is used to clone and scan public GitHub repositories.
+- **Report:** HTML report served by the backend.
+- **Not built:** PDF export and a background job queue. Analysis currently runs synchronously, which is suitable for a demo but can be slow for large repositories.
 
 ## Project layout
 
 ```
-backend/    FastAPI + SQLAlchemy + JWT auth + repo parser + AI engine
+backend/    FastAPI + SQLAlchemy + JWT auth + repository parser + Gemini AI engine
 frontend/   React (Vite) + Tailwind + React Router + Axios
 ```
 
-## Running it
+## Local development
 
 ### 1. Backend
 
 ```bash
 cd backend
-python3 -m venv venv && source venv/bin/activate    # or your usual venv tool
+python3 -m venv venv
+source venv/bin/activate    # Windows: venv\\Scripts\\activate
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.example .env       # Windows PowerShell: Copy-Item .env.example .env
 ```
 
 Edit `backend/.env`:
-- `JWT_SECRET` — generate one with `openssl rand -hex 32`
-- `ANTHROPIC_API_KEY` — get one at https://console.anthropic.com
 
-Then run it:
+- `JWT_SECRET` — generate a strong random value, for example with `openssl rand -hex 32`.
+- `GEMINI_API_KEY` — your Google Gemini API key.
+- `GEMINI_MODEL` — defaults to `gemini-2.5-flash`.
+- `DATABASE_URL` — SQLite locally; use PostgreSQL in production.
+- `FRONTEND_URL` — `http://localhost:5173` locally and your deployed frontend URL in production.
+
+Run:
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-The API is now at `http://localhost:8000` (interactive docs at `/docs`).
-Tables are created automatically on first run.
+The API is available at `http://localhost:8000`. Interactive API documentation is available at `/docs`, and the health endpoint is `/api/health`.
 
 ### 2. Frontend
 
@@ -61,30 +56,71 @@ npm install
 npm run dev
 ```
 
-Opens at `http://localhost:5173`. Sign up, then paste a public GitHub
-repo URL on the "Analyze repository" page.
+The frontend runs at `http://localhost:5173`.
 
-## How the pieces fit together (module → code)
+The frontend API URL is controlled by:
 
-| Spec module | Where it lives |
+```env
+VITE_API_URL=http://localhost:8000
+```
+
+For production, set `VITE_API_URL` to the deployed FastAPI backend URL.
+
+## Production deployment
+
+A simple deployment is:
+
+- **Frontend:** Vercel
+- **Backend:** Render or another Python-compatible web-service host
+- **Database:** PostgreSQL
+- **AI:** Google Gemini
+
+### Backend environment variables
+
+Set these in the backend hosting provider:
+
+```env
+JWT_SECRET=<strong-random-secret>
+GEMINI_API_KEY=<your-gemini-api-key>
+GEMINI_MODEL=gemini-2.5-flash
+DATABASE_URL=<postgresql-connection-string>
+CLONE_DIR=./tmp_repos
+FRONTEND_URL=https://<your-frontend-domain>
+```
+
+Start the backend with:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+### Frontend environment variable
+
+Set:
+
+```env
+VITE_API_URL=https://<your-backend-domain>
+```
+
+The backend CORS configuration allows the local development frontend and the production URL supplied through `FRONTEND_URL`.
+
+## How the pieces fit together
+
+| Module | Where it lives |
 |---|---|
 | Authentication | `backend/app/security.py`, `backend/app/routers/auth.py` |
 | Repository Parser | `backend/app/repo_parser.py` |
-| Repository Analyzer / Folder / File / Function explanation | `backend/app/ai_engine.py` |
-| Viva & Interview Question Generators | `ai_engine.generate_viva_questions` / `generate_interview_questions` |
-| Learning Assistant | `ai_engine.generate_learning_notes` |
-| Repository Insights | `ai_engine.generate_insights` |
-| Report Generator | `ai_engine.render_report_html`, served at `GET /api/repos/{id}/report` |
+| Repository / folder / file / function analysis | `backend/app/ai_engine.py` |
+| Viva questions | `generate_viva_questions` |
+| Interview questions | `generate_interview_questions` |
+| Learning Assistant | `generate_learning_notes` |
+| Repository Insights | `generate_insights` |
+| Report Generator | `render_report_html`, served at `GET /api/repos/{id}/report` |
 | Dashboard | `frontend/src/pages/Dashboard.jsx`, `GET /api/dashboard/stats` |
 
-## Known limitations to be upfront about
+## Known limitations
 
-- Analysis is synchronous — a large repo (hundreds of files) will make the
-  "Run analysis" request take a while. A production version would push
-  this to a background worker and poll for status.
-- The AI engine sends a summarized context (top-level structure + a
-  handful of "important" files) rather than the entire repo, to keep
-  requests small and fast — this is standard practice for repo-analysis
-  tools but means very large or deeply nested projects get a lighter-touch
-  analysis.
-- No rate limiting / retry logic around the AI calls yet.
+- Analysis is synchronous. Large repositories can make the analysis request take a while. A production-scale version could use a background worker and status polling.
+- The AI engine sends a summarized repository context and a limited number of key file contents rather than the entire repository.
+- There is currently no rate limiting or retry strategy around AI calls.
+- Temporary cloned repositories are stored under `CLONE_DIR` and are not intended as permanent storage.
