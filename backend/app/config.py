@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 24
 
     gemini_api_key: str
-    gemini_model: str = "ggemini-2.5-flash-lite"
+    gemini_model: str = "gemini-2.5-flash"
 
     database_url: str = "sqlite:///./repo_analyzer.db"
     clone_dir: str = "./tmp_repos"
