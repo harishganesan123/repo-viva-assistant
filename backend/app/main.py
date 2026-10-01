@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -8,9 +10,14 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI-Powered GitHub Repository Analyzer & Viva Assistant")
 
+allowed_origins = [
+    "http://localhost:5173",
+    os.getenv("FRONTEND_URL", ""),
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[origin for origin in allowed_origins if origin],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
